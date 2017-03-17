@@ -1,0 +1,17 @@
+[Binaries]
+samtools = ~/bin/samtools
+bwa = ~/bin/bwa
+java = ~/bin/java
+gatk = ~/bin/gatk.jar
+varscan = ~/bin/varscan.jar
+bedtools = ~/bin/bedtools
+[Suffix]
+indelrealn = .indelrealn.bam
+indelrealnintervals = .indelrealn.intervals
+coveragebed = .bed
+bam = .bam
+snps = .snps.vcf
+indels = .indels.vcf
+pileup = .pileup
+[hg19]
+ref_genome = hg19.fa
