@@ -360,7 +360,7 @@ def parse_vcf(vcf, is_indel=False, dry=False):
     return variants
 
 
-def pileup(bam_map, config, dir_map, dry=False):
+def create_pileups(bam_map, config, dir_map, dry=False):
     '''
     Creates pileups from bam files with samtools mpileup.
     '''
@@ -529,7 +529,7 @@ def main():
                                     dry=args.dry)
     _, cluster_map = cluster_regions(realn_bams_map, int(args.mindepth),
                                      config, dir_map, dry=args.dry)
-    pileups_map = pileup(realn_bams_map, config, dir_map, dry=args.dry)
+    pileups_map = create_pileups(realn_bams_map, config, dir_map, dry=args.dry)
     stats_map = parse_pileup_for_qc_stats(pileups_map, cluster_map, dir_map,
                                           dry=args.dry)
     plots_map = plot_qc(stats_map, config, dir_map, dry=args.dry)

@@ -10,8 +10,8 @@ indelrealn = .indelrealn.bam
 indelrealnintervals = .indelrealn.intervals
 coveragebed = .bed
 bam = .bam
-snps = .snps.vcf
-indels = .indels.vcf
+snps = .snp.vcf
+indels = .indel.vcf
 pileup = .pileup
 [hg19]
 ref_genome = hg19.fa
