@@ -5,6 +5,7 @@ java = ~/bin/java
 gatk = ~/bin/gatk.jar
 varscan = ~/bin/varscan.jar
 bedtools = ~/bin/bedtools
+bcftools = ~/bin/bcftools
 [Suffix]
 indelrealn = .indelrealn.bam
 indelrealnintervals = .indelrealn.intervals
@@ -12,6 +13,7 @@ coveragebed = .bed
 bam = .bam
 snps = .snp.vcf
 indels = .indel.vcf
+vcf = .vcf
 pileup = .pileup
 [hg19]
 ref_genome = hg19.fa

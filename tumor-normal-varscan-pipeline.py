@@ -1,5 +1,5 @@
 '''
-
+Pipeline to analyse tumor-normal WES paired data from fastq.
 '''
 
 from collections import defaultdict
@@ -49,8 +49,8 @@ def call_variants(pileups, contrasts, config, dir_map):
     '''
     java = config.get('Binaries', 'java')
     varscan = config.get('Binaries', 'varscan')
-    snp_map = {}
-    indel_map = {}
+    bcftools = config.get('Binaries', 'bcftools')
+    vcf_map = {}
     for normal_samplename, tumor_samplename in contrasts:
         normal = pileups[normal_samplename]
         tumor = pileups[tumor_samplename]
@@ -59,13 +59,37 @@ def call_variants(pileups, contrasts, config, dir_map):
                          samplename + config.get('Suffix', 'snps')])
         indels = '/'.join([dir_map["vcfdir"],
                            samplename + config.get('Suffix', 'indels')])
-        cmd1 = ' '.join([java, "-jar", varscan, "somatic", normal, tumor, 
+        vcf = '/'.join([dir_map["vcfdir"],
+                        samplename + config.get('Suffix', 'vcf')])
+        tmp = '/'.join([dir_map["vcfdir"],
+                        "tmp.vcf"])
+        cmd1 = ' '.join([java, "-jar", varscan, "somatic", normal, tumor,
                         samplename, "--p-value 0.99 --output-vcf 1"])
-        # need to change 
+        cmd2 = ' '.join([bcftools, "concat", snps, indels, ">", tmp])
+        # need to change
+        normal_name = normal_samplename + ':' + samplename
+        tumor_name = tumor_samplename + ':' + samplename
+        rename_header_samplenames(tmp, vcf, normal_name, tumor_name)
         subprocess.call(cmd1, shell=True)
-        snp_map[samplename] = snps
-        indel_map[samplename] = indels
-    return snp_map, indel_map
+        subprocess.call(cmd2, shell=True)
+        vcf_map[tumor_samplename] = snps
+    return vcf_map
+
+
+def rename_header_samplenames(vcf, new_vcf, normal_name, tumor_name):
+    '''
+    Renames the samplename headers of the VCF.
+    '''
+    is_renamed = False
+    with open(vcf, 'rU') as vcf_handle, open(new_vcf, 'w') as new_handle:
+        for line in vcf_handle:
+            if not is_renamed and re.match("#CHROM", line):
+                arow = line.strip('\n').split
+                arow[9] = normal_name
+                arow[10] = tumor_name
+                new_handle.write('\t'.join(arow) + '\n')
+            else:
+                new_handle.write(line)
 
 
 def create_pileups(bam_map, genome, config, dir_map):
@@ -178,6 +202,17 @@ def merge_bams(indv_bams_map, config, dir_map,dry=False):
     return merged_bams
 
 
+def merge_vcf(vcf_map, config, dir_map, dry=False):
+    '''
+    Merges the VCFs into one for putting into VEP and gemini.
+    '''
+    bcftools = config.get('Binaries', 'bcftools')
+    merged_vcf = '/'.join([dir_map["vcfdir"], "all_merged.vcf"])
+    vcfs = ' '.join(vcf_map.values())
+    cmd = ' '.join([$bcftools])
+    return merged_vcf
+
+
 def realign_indels(bam_map, genome, config, dir_map):
     '''
     Realigns indels with GATK.
@@ -268,7 +303,9 @@ def main():
                                     dir_map)
     pileups_map = create_pileups(realn_bams_map, args.genome, config, dir_map)
     sample_pair_maps = get_sample_pairs(args.contrasts)
-    snp_vcf_map, indel_vcf_map = call_variants(pileups_map, config, dir_map)
+    vcf_map = call_variants(pileups_map, sample_pair_maps,
+                                               config, dir_map)
+    merge_vcf(vcf_map, sample_pa)
 
 
 if __name__ == "__main__":
