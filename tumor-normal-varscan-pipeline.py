@@ -22,6 +22,7 @@ def align_reads(fastq_tsv, genome, config, dir_map):
     bwa = config.get('Binaries', 'bwa')
     samtools = config.get('Binaries', 'samtools')
     ref_genome = config.get(genome, 'ref_genome')
+    num_threads = config.get('Options', 'bwa_threads')
     fastq_map = map_fastq_from_tsv(fastq_tsv)
     inverted_fastq_map = dict((v, k) for k in fastq_map for v in fastq_map[k])
     fastqs = itertools.chain.from_iterable(fastq_map.values())
@@ -35,6 +36,7 @@ def align_reads(fastq_tsv, genome, config, dir_map):
               config.get('Suffix', 'bam')
         rg_vals = get_rg_values(sample_name, first)
         cmd = ' '.join([bwa, 'mem -R \"%s\"' % rg_vals,
+                        "-t", num_threads,
                         ref_genome, first, second, '|',
                         samtools, "view -bht", ref_genome, "|",
                         samtools, "sort", ">", bam])
@@ -49,6 +51,8 @@ def call_variants(pileups, contrasts, config, dir_map):
     '''
     java = config.get('Binaries', 'java')
     varscan = config.get('Binaries', 'varscan')
+    bgzip = config.get('Binaries', 'bgzip')
+    tabix = config.get('Binaries', 'tabix')
     bcftools = config.get('Binaries', 'bcftools')
     vcf_map = {}
     for normal_samplename, tumor_samplename in contrasts:
@@ -59,20 +63,25 @@ def call_variants(pileups, contrasts, config, dir_map):
                          samplename + config.get('Suffix', 'snps')])
         indels = '/'.join([dir_map["vcfdir"],
                            samplename + config.get('Suffix', 'indels')])
+        snps_zip = snps + '.gz'
+        indels_zip = indels + '.gz'
         vcf = '/'.join([dir_map["vcfdir"],
                         samplename + config.get('Suffix', 'vcf')])
         tmp = '/'.join([dir_map["vcfdir"],
                         "tmp.vcf"])
         cmd1 = ' '.join([java, "-jar", varscan, "somatic", normal, tumor,
                         samplename, "--p-value 0.99 --output-vcf 1"])
-        cmd2 = ' '.join([bcftools, "concat", snps, indels, ">", tmp])
-        # need to change
+        cmd2 = ' '.join([bgzip, snps])
+        cmd3 = ' '.join([bgzip, indels])
+        cmd4 = ' '.join([tabix, snps_zip])
+        cmd5 = ' '.join([tabix, indels_zip])
+        cmd6 = ' '.join([bcftools, "concat -a", snps_zip, indels_zip, ">", tmp])
+        for cmd in (cmd1, cmd2, cmd3, cmd4, cmd5, cmd6):
+            subprocess.call(cmd, shell=True)
         normal_name = normal_samplename + ':' + samplename
         tumor_name = tumor_samplename + ':' + samplename
         rename_header_samplenames(tmp, vcf, normal_name, tumor_name)
-        subprocess.call(cmd1, shell=True)
-        subprocess.call(cmd2, shell=True)
-        vcf_map[tumor_samplename] = snps
+        vcf_map[tumor_samplename] = vcf
     return vcf_map
 
 
@@ -84,10 +93,11 @@ def rename_header_samplenames(vcf, new_vcf, normal_name, tumor_name):
     with open(vcf, 'rU') as vcf_handle, open(new_vcf, 'w') as new_handle:
         for line in vcf_handle:
             if not is_renamed and re.match("#CHROM", line):
-                arow = line.strip('\n').split
+                arow = line.strip('\n').split('\t')
                 arow[9] = normal_name
                 arow[10] = tumor_name
-                new_handle.write('\t'.join(arow) + '\n')
+                new_arow = arow[:9] + [normal_name, tumor_name]
+                new_handle.write('\t'.join(new_arow) + '\n')
             else:
                 new_handle.write(line)
 
@@ -181,7 +191,7 @@ def map_fastq_pairs(fastqs):
     return mapped_pairs
 
 
-def merge_bams(indv_bams_map, config, dir_map,dry=False):
+def merge_bams(indv_bams_map, config, dir_map):
     '''
     Merges the individual bams into a sample bam.
     '''
@@ -193,23 +203,31 @@ def merge_bams(indv_bams_map, config, dir_map,dry=False):
                                samplename + config.get('Suffix', 'bam')])
         cmd1 = ' '.join([samtools, "merge", output_bam, input_bams])
         cmd2 = ' '.join([samtools, "index", output_bam])
-        if dry:
-            sys.stdout.write(cmd1 + '\n' + cmd2 + '\n')
-        else:
-            subprocess.call(cmd1, shell=True)
-            subprocess.call(cmd2, shell=True)
+        subprocess.call(cmd1, shell=True)
+        subprocess.call(cmd2, shell=True)
         merged_bams[samplename] = output_bam
     return merged_bams
 
 
-def merge_vcf(vcf_map, config, dir_map, dry=False):
+def merge_vcf(vcf_map, config, dir_map):
     '''
     Merges the VCFs into one for putting into VEP and gemini.
     '''
     bcftools = config.get('Binaries', 'bcftools')
+    bgzip = config.get('Binaries', 'bgzip')
+    tabix = config.get('Binaries', 'tabix')
     merged_vcf = '/'.join([dir_map["vcfdir"], "all_merged.vcf"])
+    zipped_vcfs = []
     vcfs = ' '.join(vcf_map.values())
-    cmd = ' '.join([$bcftools])
+    for vcf in vcfs:
+        cmd1 = ' '.join([bgzip, vcf])
+        cmd2 = ' '.join([tabix, vcf + '.gz'])
+        zipped_vcfs.append(vcf + '.gz')
+        subprocess.call(cmd1)
+        subprocess.call(cmd2)
+    cmd3 = ' '.join([bcftools, 'merge -m none'] +
+                    zipped_vcfs + ['>', merged_vcf])
+    subprocess.call(cmd3)
     return merged_vcf
 
 
@@ -237,7 +255,7 @@ def realign_indels(bam_map, genome, config, dir_map):
     return realn_bams
 
 
-def setup_dir(cur_dir, out_dir_name, dry=False):
+def setup_dir(cur_dir, out_dir_name):
     '''
     Sets up output directory in project directory.
     '''
@@ -253,15 +271,14 @@ def setup_dir(cur_dir, out_dir_name, dry=False):
     vcf_dir = '/'.join([out_dir, "vcfs"])
     report_dir = '/'.join([out_dir, "report_html"])
     coverage_dir = '/'.join([out_dir, "coverage"])
-    if not dry:
-        try:
-            for folder in [out_dir, bam_dir, indbam_dir, pileup_dir,
-                           coverage_dir, vcf_dir, report_dir]:
-                os.makedirs(folder)
-        except OSError as err:
-            sys.stderr.write("%s\n" % err)
-            sys.stderr.write("Error: %s directory already exists.\n" % folder)
-            sys.exit()
+    try:
+        for folder in [out_dir, bam_dir, indbam_dir, pileup_dir,
+                        coverage_dir, vcf_dir, report_dir]:
+            os.makedirs(folder)
+    except OSError as err:
+        sys.stderr.write("%s\n" % err)
+        sys.stderr.write("Error: %s directory already exists.\n" % folder)
+        sys.exit()
     return {"bamdir": bam_dir,
             "outdir": out_dir,
             "projdir": cur_dir,
@@ -303,9 +320,8 @@ def main():
                                     dir_map)
     pileups_map = create_pileups(realn_bams_map, args.genome, config, dir_map)
     sample_pair_maps = get_sample_pairs(args.contrasts)
-    vcf_map = call_variants(pileups_map, sample_pair_maps,
-                                               config, dir_map)
-    merge_vcf(vcf_map, sample_pa)
+    vcf_map = call_variants(pileups_map, sample_pair_maps, config, dir_map)
+    merged_vcf = merge_vcf(vcf_map, config, dir_map)
 
 
 if __name__ == "__main__":

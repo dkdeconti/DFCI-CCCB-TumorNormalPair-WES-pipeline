@@ -6,6 +6,8 @@ gatk = ~/bin/gatk.jar
 varscan = ~/bin/varscan.jar
 bedtools = ~/bin/bedtools
 bcftools = ~/bin/bcftools
+bgzip = ~/bin/bgzip
+tabix = ~/bin/tabix
 [Suffix]
 indelrealn = .indelrealn.bam
 indelrealnintervals = .indelrealn.intervals
@@ -17,3 +19,5 @@ vcf = .vcf
 pileup = .pileup
 [hg19]
 ref_genome = hg19.fa
+[Options]
+bwa_threads = 10
