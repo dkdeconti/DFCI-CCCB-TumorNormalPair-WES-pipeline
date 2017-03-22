@@ -8,9 +8,7 @@ import ConfigParser
 import gzip
 import itertools
 import os
-import jinja2
 import re
-import shutil
 import subprocess
 import sys
 
