@@ -15,6 +15,28 @@ import subprocess
 import sys
 
 
+def annotate_vcf(vcf, genome, config, dir_map):
+    '''
+    Annotates (merged) vcf with VEP.
+    '''
+    vep = config.get('Binaries', 'vep')
+    vep_libs = config.get('Binaries', 'vep_libs')
+    vep_suffix = config.get('Suffix', 'vep')
+    annotated_vcf = re.sub(r'\.vcf', config.get('Suffix', 'vep'), vcf)
+    cmd = ' '.join(['per', vep, '--cache', '--dir', vep_libs,
+                    '--species', config.get(genome, 'species'),
+                    '--cache_version 75', '--offline', '--everything',
+                    '--fork 15', '--vcf',
+                    '--input_file', vcf,
+                    '--output_file', annotated_vcf,
+                    '--custom', config.get(genome, 'exac_syn'),
+                    '--custom', config.get(genome, 'exac_mis'),
+                    '--custom', config.get(genome, 'exac_lof'),
+                    '--plugin LoF'])
+    subprocess.call(cmd, shell=True)
+    return annotated_vcf
+
+
 def align_reads(fastq_tsv, genome, config, dir_map):
     '''
     Aligns reads from fastqs.
@@ -40,7 +62,8 @@ def align_reads(fastq_tsv, genome, config, dir_map):
                         ref_genome, first, second, '|',
                         samtools, "view -bht", ref_genome, "|",
                         samtools, "sort", ">", bam])
-        subprocess.call(cmd, shell=True)
+        if not os.path.exists(bam):
+            subprocess.call(cmd, shell=True)
         bams[sample_name].append(bam)
     return bams
 
@@ -76,11 +99,12 @@ def call_variants(pileups, contrasts, config, dir_map):
         cmd4 = ' '.join([tabix, snps_zip])
         cmd5 = ' '.join([tabix, indels_zip])
         cmd6 = ' '.join([bcftools, "concat -a", snps_zip, indels_zip, ">", tmp])
-        for cmd in (cmd1, cmd2, cmd3, cmd4, cmd5, cmd6):
-            subprocess.call(cmd, shell=True)
-        normal_name = normal_samplename + ':' + samplename
-        tumor_name = tumor_samplename + ':' + samplename
-        rename_header_samplenames(tmp, vcf, normal_name, tumor_name)
+        if not os.path.exists(vcf):
+            for cmd in (cmd1, cmd2, cmd3, cmd4, cmd5, cmd6):
+                subprocess.call(cmd, shell=True)
+            normal_name = normal_samplename + ':' + samplename
+            tumor_name = tumor_samplename + ':' + samplename
+            rename_header_samplenames(tmp, vcf, normal_name, tumor_name)
         vcf_map[tumor_samplename] = vcf
     return vcf_map
 
@@ -114,7 +138,8 @@ def create_pileups(bam_map, genome, config, dir_map):
                            samplename + config.get('Suffix', 'pileup')])
         cmd = ' '.join([samtools, "mpileup -B -f", ref_genome, bam,
                         ">", pileup])
-        subprocess.call(cmd, shell=True)
+        if not os.path.exists(pileup):
+            subprocess.call(cmd, shell=True)
         pileup_map[samplename] = pileup
     return pileup_map
 
@@ -155,6 +180,15 @@ def get_sample_pairs(contrasts):
             arow = line.strip('\n').split('\t')
             pairs.append(arow)
     return pairs
+
+
+def load_into_gemini(vcf, genome, config, dir_map):
+    '''
+    Loads annotated vcf into gemini.
+    '''
+    gemini_db = vcf + '.db'
+    gemini = config.get('Binaries', 'gemini')
+    cmd = ' '.join([gemini, 'load -t VEP -v', vcf, gemini_db])
 
 
 def map_fastq_from_tsv(fastq_tsv):
@@ -203,31 +237,42 @@ def merge_bams(indv_bams_map, config, dir_map):
                                samplename + config.get('Suffix', 'bam')])
         cmd1 = ' '.join([samtools, "merge", output_bam, input_bams])
         cmd2 = ' '.join([samtools, "index", output_bam])
-        subprocess.call(cmd1, shell=True)
-        subprocess.call(cmd2, shell=True)
+        if not os.path.exists(output_bam):
+            subprocess.call(cmd1, shell=True)
+            subprocess.call(cmd2, shell=True)
         merged_bams[samplename] = output_bam
     return merged_bams
 
 
-def merge_vcf(vcf_map, config, dir_map):
+def merge_vcf(vcf_map, genome, config, dir_map):
     '''
     Merges the VCFs into one for putting into VEP and gemini.
     '''
     bcftools = config.get('Binaries', 'bcftools')
     bgzip = config.get('Binaries', 'bgzip')
     tabix = config.get('Binaries', 'tabix')
+    vt = config.get('Binaries', 'vt')
+
     merged_vcf = '/'.join([dir_map["vcfdir"], "all_merged.vcf"])
+    normed_merged_vcf = re.sub(r'\.vcf', '.decomp_normed.vcf', merged_vcf)
     zipped_vcfs = []
     vcfs = ' '.join(vcf_map.values())
     for vcf in vcfs:
         cmd1 = ' '.join([bgzip, vcf])
         cmd2 = ' '.join([tabix, vcf + '.gz'])
         zipped_vcfs.append(vcf + '.gz')
-        subprocess.call(cmd1)
-        subprocess.call(cmd2)
+        if not os.path.exists(vcf):
+            subprocess.call(cmd1)
+            subprocess.call(cmd2)
     cmd3 = ' '.join([bcftools, 'merge -m none'] +
                     zipped_vcfs + ['>', merged_vcf])
-    subprocess.call(cmd3)
+    cmd4 = ' '.join(['sed s/ID=AD,Number=./ID=AD,Number=R/', merged_vcf, '|',
+                     vt, 'decompose -s - |',
+                     vt, 'normalize -r', config.get(genome, 'ref_genome'), '-',
+                     '>', normed_merged_vcf])
+    if not os.path.exists(normed_merged_vcf):
+        subprocess.call(cmd3)
+        subprocess.call(cmd4)
     return merged_vcf
 
 
@@ -249,8 +294,9 @@ def realign_indels(bam_map, genome, config, dir_map):
         cmd2 = ' '.join([java, "-jar", gatk, "-T IndelRealigner",
                          "-R", ref_genome, "-I", bam,
                          "-targetIntervals", realn_intervals, "-o", realn_bam])
-        subprocess.call(cmd1, shell=True)
-        subprocess.call(cmd2, shell=True)
+        if not os.path.exists(realn_bam):
+            subprocess.call(cmd1, shell=True)
+            subprocess.call(cmd2, shell=True)
         realn_bams[samplename] = realn_bam
     return realn_bams
 
@@ -321,7 +367,9 @@ def main():
     pileups_map = create_pileups(realn_bams_map, args.genome, config, dir_map)
     sample_pair_maps = get_sample_pairs(args.contrasts)
     vcf_map = call_variants(pileups_map, sample_pair_maps, config, dir_map)
-    merged_vcf = merge_vcf(vcf_map, config, dir_map)
+    merged_vcf = merge_vcf(vcf_map, args.genome, config, dir_map)
+    annot_vcf = annotate_vcf(merged_vcf, args.genome, config, dir_map)
+    load_into_gemini(annot_vcf, args.genome, config, dir_map)
 
 
 if __name__ == "__main__":

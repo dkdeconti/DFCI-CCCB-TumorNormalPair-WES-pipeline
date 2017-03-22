@@ -8,6 +8,8 @@ bedtools = ~/bin/bedtools
 bcftools = ~/bin/bcftools
 bgzip = ~/bin/bgzip
 tabix = ~/bin/tabix
+vep = 
+vep_libs = ~/.vep
 [Suffix]
 indelrealn = .indelrealn.bam
 indelrealnintervals = .indelrealn.intervals
@@ -19,5 +21,9 @@ vcf = .vcf
 pileup = .pileup
 [hg19]
 ref_genome = hg19.fa
+species = homo_sapiens
+exac_syn = 
+exac_mis =
+exac_lof =
 [Options]
 bwa_threads = 10
