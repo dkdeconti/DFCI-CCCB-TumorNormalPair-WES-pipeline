@@ -20,7 +20,7 @@ indels = .indel.vcf
 vcf = .vcf
 pileup = .pileup
 [hg19]
-ref_genome = hg19.fa
+ref_genome = /cbhomes2/deconti/scratch/plexwell_pipeline/hg19.fa
 species = homo_sapiens
 exac_syn = ExAC.syn_z.bed.bgz
 exac_mis = ExAC.mis_z.bed.bgz
