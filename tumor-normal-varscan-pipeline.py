@@ -61,7 +61,6 @@ def align_reads(fastq_tsv, genome, config, dir_map):
                         samtools, "view -bht", ref_genome, "|",
                         samtools, "sort", ">", bam])
         if not os.path.exists(bam):
-            print(cmd)
             subprocess.call(cmd, shell=True)
         bams[sample_name].append(bam)
     return bams
