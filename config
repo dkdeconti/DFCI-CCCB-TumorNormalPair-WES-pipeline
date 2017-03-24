@@ -8,6 +8,7 @@ bedtools = ~/bin/bedtools
 bcftools = ~/bin/bcftools
 bgzip = ~/bin/bgzip
 tabix = ~/bin/tabix
+vt = /ifs/labs/cccb/projects/cccb/apps/vt/vt
 vep = ~/bin/ensembl-tools-release-75/scripts/variant_effect_predictor/variant_effect_predictor.pl
 vep_libs = ~/.vep
 [Suffix]

@@ -31,7 +31,8 @@ def annotate_vcf(vcf, genome, config, dir_map):
                     '--custom', config.get(genome, 'exac_mis'),
                     '--custom', config.get(genome, 'exac_lof'),
                     '--plugin LoF'])
-    subprocess.call(cmd, shell=True)
+    if not os.path.exists(annotate_vcf):
+        subprocess.call(cmd, shell=True)
     return annotated_vcf
 
 
@@ -99,6 +100,7 @@ def call_variants(pileups, contrasts, config, dir_map):
         cmd6 = ' '.join([bcftools, "concat -a", snps_zip, indels_zip, ">", tmp])
         if not os.path.exists(vcf):
             for cmd in (cmd1, cmd2, cmd3, cmd4, cmd5, cmd6):
+                print cmd
                 subprocess.call(cmd, shell=True)
             normal_name = normal_samplename + ':' + samplename
             tumor_name = tumor_samplename + ':' + samplename
@@ -231,7 +233,7 @@ def merge_bams(indv_bams_map, config, dir_map):
     samtools = config.get('Binaries', 'samtools')
     for samplename, bams in indv_bams_map.items():
         input_bams = ' '.join(bams)
-        output_bam = '/'.join([dir_map["bamdir"], 
+        output_bam = '/'.join([dir_map["bamdir"],
                                samplename + config.get('Suffix', 'bam')])
         cmd1 = ' '.join([samtools, "merge", output_bam, input_bams])
         cmd2 = ' '.join([samtools, "index", output_bam])
@@ -315,14 +317,13 @@ def setup_dir(cur_dir, out_dir_name):
     vcf_dir = '/'.join([out_dir, "vcfs"])
     report_dir = '/'.join([out_dir, "report_html"])
     coverage_dir = '/'.join([out_dir, "coverage"])
-    try:
-        for folder in [out_dir, bam_dir, indbam_dir, pileup_dir,
-                        coverage_dir, vcf_dir, report_dir]:
+    for folder in [out_dir, bam_dir, indbam_dir, pileup_dir,
+                   coverage_dir, vcf_dir, report_dir]:
+        try:
             os.makedirs(folder)
-    except OSError as err:
-        sys.stderr.write("%s\n" % err)
-        sys.stderr.write("Error: %s directory already exists.\n" % folder)
-        sys.exit()
+        except OSError as err:
+            sys.stderr.write("%s\n" % err)
+            sys.stderr.write("Error: %s directory already exists.\n" % folder)
     return {"bamdir": bam_dir,
             "outdir": out_dir,
             "projdir": cur_dir,
