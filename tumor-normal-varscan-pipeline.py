@@ -55,7 +55,9 @@ def align_reads(fastq_tsv, genome, config, dir_map):
                               '', first).split('/')[-1]
         bam = dir_map["indbamdir"] + '/' + bam_basename + \
               config.get('Suffix', 'bam')
-        rg_vals = get_rg_values(sample_name, first)
+        rg_vals = ""
+        if not os.path.exists(bam):
+            rg_vals = get_rg_values(sample_name, first)
         cmd = ' '.join([bwa, 'mem -t', num_threads,
                         '-R \"%s\"' % rg_vals,
                         ref_genome, first, second, '|',
@@ -63,6 +65,8 @@ def align_reads(fastq_tsv, genome, config, dir_map):
                         samtools, "sort", ">", bam])
         if not os.path.exists(bam):
             subprocess.call(cmd, shell=True)
+        else:
+            sys.stderr.write(cmd + '\n')
         bams[sample_name].append(bam)
     return bams
 
@@ -77,10 +81,11 @@ def call_variants(pileups, contrasts, config, dir_map):
     tabix = config.get('Binaries', 'tabix')
     bcftools = config.get('Binaries', 'bcftools')
     vcf_map = {}
-    for normal_samplename, tumor_samplename in contrasts:
-        normal = pileups[normal_samplename]
-        tumor = pileups[tumor_samplename]
-        samplename = "_vs_".join([normal_samplename, tumor_samplename])
+    for tumor_samplename, normal_samplename in contrasts:
+        if normal_samplename == "":
+            samplename = tumor_samplename
+        else:
+            samplename = "_vs_".join([normal_samplename, tumor_samplename])
         snps = '/'.join([dir_map["vcfdir"],
                          samplename + config.get('Suffix', 'snps')])
         indels = '/'.join([dir_map["vcfdir"],
@@ -89,41 +94,44 @@ def call_variants(pileups, contrasts, config, dir_map):
         indels_zip = indels + '.gz'
         vcf = '/'.join([dir_map["vcfdir"],
                         samplename + config.get('Suffix', 'vcf')])
-        tmp = '/'.join([dir_map["vcfdir"],
-                        "tmp.vcf"])
-        cmd1 = ' '.join([java, "-jar", varscan, "somatic", normal, tumor,
-                        samplename, "--p-value 0.99 --output-vcf 1"])
-        cmd2 = ' '.join([bgzip, snps])
-        cmd3 = ' '.join([bgzip, indels])
-        cmd4 = ' '.join([tabix, snps_zip])
-        cmd5 = ' '.join([tabix, indels_zip])
-        cmd6 = ' '.join([bcftools, "concat -a", snps_zip, indels_zip, ">", tmp])
+        cmd_list = []
+        if normal_samplename == "":
+            pileup = pileups[tumor_samplename]
+            cmd1 = ' '.join([java, '-jar', varscan, 'mpileup2snp', pileup,
+                             '--p-value 90e-2 --output-vcf 1', '>', snps])
+            cmd2 = ' '.join([java, '-jar', varscan, 'mpileup2indel', pileup,
+                             '--p-value 90e-2 --output-vcf 1', '>', indels])
+            cmd_list += [cmd1, cmd2]
+        else:
+            normal = pileups[normal_samplename]
+            tumor = pileups[tumor_samplename]
+            tmp = '/'.join([dir_map["vcfdir"],
+                            "tmp.vcf"])
+            cmd1 = ' '.join([java, "-jar", varscan, "somatic", normal, tumor,
+                             os.path.join(dir_map["vcfdir"], samplename),
+                             "--p-value 0.99 --output-vcf 1"])
+            cmd_list += [cmd1]
+        cmd3 = ' '.join([bgzip, snps])
+        cmd4 = ' '.join([bgzip, indels])
+        cmd5 = ' '.join([tabix, snps_zip])
+        cmd6 = ' '.join([tabix, indels_zip])
+        cmd7 = ' '.join([bcftools, "concat -a", snps_zip, indels_zip, ">", tmp])
+        cmd_list += [cmd3, cmd4, cmd5, cmd6, cmd7]
         if not os.path.exists(vcf):
-            for cmd in (cmd1, cmd2, cmd3, cmd4, cmd5, cmd6):
-                print cmd
+            for cmd in cmd_list:
                 subprocess.call(cmd, shell=True)
-            normal_name = normal_samplename + ':' + samplename
-            tumor_name = tumor_samplename + ':' + samplename
-            rename_header_samplenames(tmp, vcf, normal_name, tumor_name)
+            if normal_samplename == "":
+                tumor_name = samplename
+                rename_header_samplenames(tmp, vcf, tumor_name)
+            else:
+                normal_name = normal_samplename + ':' + samplename
+                tumor_name = tumor_samplename + ':' + samplename
+                rename_header_samplenames(tmp, vcf, normal_name, tumor_name)
+        else:
+            for cmd in cmd_list:
+                sys.stderr.write(cmd + '\n')
         vcf_map[tumor_samplename] = vcf
     return vcf_map
-
-
-def rename_header_samplenames(vcf, new_vcf, normal_name, tumor_name):
-    '''
-    Renames the samplename headers of the VCF.
-    '''
-    is_renamed = False
-    with open(vcf, 'rU') as vcf_handle, open(new_vcf, 'w') as new_handle:
-        for line in vcf_handle:
-            if not is_renamed and re.match("#CHROM", line):
-                arow = line.strip('\n').split('\t')
-                arow[9] = normal_name
-                arow[10] = tumor_name
-                new_arow = arow[:9] + [normal_name, tumor_name]
-                new_handle.write('\t'.join(new_arow) + '\n')
-            else:
-                new_handle.write(line)
 
 
 def create_pileups(bam_map, genome, config, dir_map):
@@ -140,6 +148,8 @@ def create_pileups(bam_map, genome, config, dir_map):
                         ">", pileup])
         if not os.path.exists(pileup):
             subprocess.call(cmd, shell=True)
+        else:
+            sys.stderr.write(cmd + '\n')
         pileup_map[samplename] = pileup
     return pileup_map
 
@@ -240,6 +250,8 @@ def merge_bams(indv_bams_map, config, dir_map):
         if not os.path.exists(output_bam):
             subprocess.call(cmd1, shell=True)
             subprocess.call(cmd2, shell=True)
+        else:
+            sys.stderr.write(cmd1 + '\n' + cmd2 + '\n')
         merged_bams[samplename] = output_bam
     return merged_bams
 
@@ -252,18 +264,22 @@ def merge_vcf(vcf_map, genome, config, dir_map):
     bgzip = config.get('Binaries', 'bgzip')
     tabix = config.get('Binaries', 'tabix')
     vt = config.get('Binaries', 'vt')
-
     merged_vcf = '/'.join([dir_map["vcfdir"], "all_merged.vcf"])
     normed_merged_vcf = re.sub(r'\.vcf', '.decomp_normed.vcf', merged_vcf)
     zipped_vcfs = []
-    vcfs = ' '.join(vcf_map.values())
+    vcfs = vcf_map.values()
+    print "DEBUG:", vcfs
+    sys.exit()
     for vcf in vcfs:
         cmd1 = ' '.join([bgzip, vcf])
         cmd2 = ' '.join([tabix, vcf + '.gz'])
         zipped_vcfs.append(vcf + '.gz')
         if not os.path.exists(vcf):
+            print "DEBUG:", cmd1
             subprocess.call(cmd1)
             subprocess.call(cmd2)
+        else:
+            sys.stderr.write(cmd1 + '\n' + cmd2 + '\n')
     cmd3 = ' '.join([bcftools, 'merge -m none'] +
                     zipped_vcfs + ['>', merged_vcf])
     cmd4 = ' '.join(['sed s/ID=AD,Number=./ID=AD,Number=R/', merged_vcf, '|',
@@ -273,6 +289,8 @@ def merge_vcf(vcf_map, genome, config, dir_map):
     if not os.path.exists(normed_merged_vcf):
         subprocess.call(cmd3)
         subprocess.call(cmd4)
+    else:
+        sys.stderr.write(cmd3 + '\n' + cmd4 + '\n')
     return merged_vcf
 
 
@@ -297,8 +315,30 @@ def realign_indels(bam_map, genome, config, dir_map):
         if not os.path.exists(realn_bam):
             subprocess.call(cmd1, shell=True)
             subprocess.call(cmd2, shell=True)
+        else:
+            sys.stderr.write(cmd1 + '\n' + cmd2 + '\n')
         realn_bams[samplename] = realn_bam
     return realn_bams
+
+
+def rename_header_samplenames(vcf, new_vcf, normal_name, tumor_name=None):
+    '''
+    Renames the samplename headers of the VCF.
+    '''
+    is_renamed = False
+    with open(vcf, 'rU') as vcf_handle, open(new_vcf, 'w') as new_handle:
+        for line in vcf_handle:
+            if not is_renamed and re.match("#CHROM", line):
+                arow = line.strip('\n').split('\t')
+                arow[9] = normal_name
+                if tumor_name:
+                    arow[10] = tumor_name
+                    new_arow = arow[:9] + [normal_name, tumor_name]
+                else:
+                    new_arow = arow[:9] + [normal_name]
+                new_handle.write('\t'.join(new_arow) + '\n')
+            else:
+                new_handle.write(line)
 
 
 def setup_dir(cur_dir, out_dir_name):
