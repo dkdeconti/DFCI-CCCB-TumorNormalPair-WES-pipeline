@@ -268,16 +268,13 @@ def merge_vcf(vcf_map, genome, config, dir_map):
     normed_merged_vcf = re.sub(r'\.vcf', '.decomp_normed.vcf', merged_vcf)
     zipped_vcfs = []
     vcfs = vcf_map.values()
-    print "DEBUG:", vcfs
-    sys.exit()
     for vcf in vcfs:
         cmd1 = ' '.join([bgzip, vcf])
         cmd2 = ' '.join([tabix, vcf + '.gz'])
         zipped_vcfs.append(vcf + '.gz')
-        if not os.path.exists(vcf):
-            print "DEBUG:", cmd1
-            subprocess.call(cmd1)
-            subprocess.call(cmd2)
+        if not os.path.exists(vcf + ".gz"):
+            subprocess.call(cmd1, shell=True)
+            subprocess.call(cmd2, shell=True)
         else:
             sys.stderr.write(cmd1 + '\n' + cmd2 + '\n')
     cmd3 = ' '.join([bcftools, 'merge -m none'] +
@@ -287,8 +284,8 @@ def merge_vcf(vcf_map, genome, config, dir_map):
                      vt, 'normalize -r', config.get(genome, 'ref_genome'), '-',
                      '>', normed_merged_vcf])
     if not os.path.exists(normed_merged_vcf):
-        subprocess.call(cmd3)
-        subprocess.call(cmd4)
+        subprocess.call(cmd3, shell=True)
+        subprocess.call(cmd4, shell=True)
     else:
         sys.stderr.write(cmd3 + '\n' + cmd4 + '\n')
     return merged_vcf
