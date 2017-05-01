@@ -19,9 +19,8 @@ def annotate_vcf(vcf, genome, config, dir_map):
     '''
     vep = config.get('Binaries', 'vep')
     vep_libs = config.get('Binaries', 'vep_libs')
-    vep_suffix = config.get('Suffix', 'vep')
     annotated_vcf = re.sub(r'\.vcf', config.get('Suffix', 'vep'), vcf)
-    cmd = ' '.join(['per', vep, '--cache', '--dir', vep_libs,
+    cmd = ' '.join(['perl', vep, '--cache', '--dir', vep_libs,
                     '--species', config.get(genome, 'species'),
                     '--cache_version 75', '--offline', '--everything',
                     '--fork 15', '--vcf',
@@ -31,7 +30,7 @@ def annotate_vcf(vcf, genome, config, dir_map):
                     '--custom', config.get(genome, 'exac_mis'),
                     '--custom', config.get(genome, 'exac_lof'),
                     '--plugin LoF'])
-    if not os.path.exists(annotate_vcf):
+    if not os.path.exists(annotated_vcf):
         subprocess.call(cmd, shell=True)
     return annotated_vcf
 
@@ -94,6 +93,7 @@ def call_variants(pileups, contrasts, config, dir_map):
         indels_zip = indels + '.gz'
         vcf = '/'.join([dir_map["vcfdir"],
                         samplename + config.get('Suffix', 'vcf')])
+        vcf_zip = vcf + '.gz'
         cmd_list = []
         if normal_samplename == "":
             pileup = pileups[tumor_samplename]
@@ -116,9 +116,13 @@ def call_variants(pileups, contrasts, config, dir_map):
         cmd5 = ' '.join([tabix, snps_zip])
         cmd6 = ' '.join([tabix, indels_zip])
         cmd7 = ' '.join([bcftools, "concat -a", snps_zip, indels_zip, ">", tmp])
+        cmd8 = ' '.join([bgzip, vcf])
+        cmd9 = ' '.join([tabix, vcf_zip])
         cmd_list += [cmd3, cmd4, cmd5, cmd6, cmd7]
-        if not os.path.exists(vcf):
+        if not os.path.exists(vcf_zip):
             for cmd in cmd_list:
+                print "DEBUG:", vcf_zip
+                print "DEBUG:", cmd
                 subprocess.call(cmd, shell=True)
             if normal_samplename == "":
                 tumor_name = samplename
@@ -127,10 +131,12 @@ def call_variants(pileups, contrasts, config, dir_map):
                 normal_name = normal_samplename + ':' + samplename
                 tumor_name = tumor_samplename + ':' + samplename
                 rename_header_samplenames(tmp, vcf, normal_name, tumor_name)
+            subprocess.call(cmd8, shell=True)
+            subprocess.call(cmd9, shell=True)
         else:
             for cmd in cmd_list:
                 sys.stderr.write(cmd + '\n')
-        vcf_map[tumor_samplename] = vcf
+        vcf_map[tumor_samplename] = vcf_zip
     return vcf_map
 
 
@@ -196,9 +202,13 @@ def load_into_gemini(vcf, genome, config, dir_map):
     '''
     Loads annotated vcf into gemini.
     '''
-    gemini_db = vcf + '.db'
+    basename = vcf.split('/')[-1]
+    gemini_db = '/'.join([dir_map["geminidir"],
+                          basename + config.get('Suffix', 'gemini')])
     gemini = config.get('Binaries', 'gemini')
-    cmd = ' '.join([gemini, 'load -t VEP -v', vcf, gemini_db])
+    gemini_python = config.get('Binaries', 'gemini_python')
+    cmd = ' '.join([gemini_python, gemini, 'load -t VEP -v', vcf, gemini_db])
+    subprocess.call(cmd, shell=True)
 
 
 def map_fastq_from_tsv(fastq_tsv):
@@ -266,17 +276,18 @@ def merge_vcf(vcf_map, genome, config, dir_map):
     vt = config.get('Binaries', 'vt')
     merged_vcf = '/'.join([dir_map["vcfdir"], "all_merged.vcf"])
     normed_merged_vcf = re.sub(r'\.vcf', '.decomp_normed.vcf', merged_vcf)
-    zipped_vcfs = []
-    vcfs = vcf_map.values()
-    for vcf in vcfs:
-        cmd1 = ' '.join([bgzip, vcf])
-        cmd2 = ' '.join([tabix, vcf + '.gz'])
-        zipped_vcfs.append(vcf + '.gz')
-        if not os.path.exists(vcf + ".gz"):
-            subprocess.call(cmd1, shell=True)
-            subprocess.call(cmd2, shell=True)
-        else:
-            sys.stderr.write(cmd1 + '\n' + cmd2 + '\n')
+    zipped_vcfs = vcf_map.values()
+    #zipped_vcfs = []
+    #vcfs = vcf_map.values()
+    #for vcf in vcfs:
+    #    cmd1 = ' '.join([bgzip, vcf])
+    #    cmd2 = ' '.join([tabix, vcf + '.gz'])
+    #    zipped_vcfs.append(vcf + '.gz')
+    #    if not os.path.exists(vcf + ".gz"):
+    #        subprocess.call(cmd1, shell=True)
+    #        subprocess.call(cmd2, shell=True)
+    #    else:
+    #        sys.stderr.write(cmd1 + '\n' + cmd2 + '\n')
     cmd3 = ' '.join([bcftools, 'merge -m none'] +
                     zipped_vcfs + ['>', merged_vcf])
     cmd4 = ' '.join(['sed s/ID=AD,Number=./ID=AD,Number=R/', merged_vcf, '|',
@@ -352,7 +363,7 @@ def setup_dir(cur_dir, out_dir_name):
     indbam_dir = '/'.join([bam_dir, "individual_bam_files"])
     pileup_dir = '/'.join([out_dir, "pileups"])
     vcf_dir = '/'.join([out_dir, "vcfs"])
-    report_dir = '/'.join([out_dir, "report_html"])
+    gemini_dir = '/'.join([out_dir, "gemini"])
     coverage_dir = '/'.join([out_dir, "coverage"])
     for folder in [out_dir, bam_dir, indbam_dir, pileup_dir,
                    coverage_dir, vcf_dir, report_dir]:
@@ -368,7 +379,7 @@ def setup_dir(cur_dir, out_dir_name):
             "pileupdir": pileup_dir,
             "vcfdir": vcf_dir,
             "coveragedir": coverage_dir,
-            "reportdir": report_dir}
+            "geminidir": gemini_dir}
 
 
 def main():

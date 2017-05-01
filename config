@@ -3,6 +3,8 @@ samtools = ~/bin/samtools
 bwa = ~/bin/bwa
 java = ~/bin/java
 gatk = ~/bin/gatk.jar
+gemini = /ifs/labs/cccb/projects/cccb/apps/gemini_0.18.0/bin/gemini
+gemini_python = /ifs/labs/cccb/projects/cccb/apps/gemini_0.18.0/anaconda/bin/python
 varscan = ~/bin/varscan.jar
 bedtools = ~/bin/bedtools
 bcftools = ~/bin/bcftools
@@ -19,12 +21,14 @@ bam = .bam
 snps = .snp.vcf
 indels = .indel.vcf
 vcf = .vcf
+vep = .vep.vcf
 pileup = .pileup
+gemini = .db
 [hg19]
 ref_genome = /cbhomes2/deconti/scratch/plexwell_pipeline/hg19.fa
 species = homo_sapiens
-exac_syn = ExAC.syn_z.bed.bgz
-exac_mis = ExAC.mis_z.bed.bgz
-exac_lof = ExAC.lof_z.bed.bgz
+exac_syn = ~/bin/ExAC/ExAC.syn_z.bed.bgz
+exac_mis = ~/bin/ExAC/ExAC.mis_z.bed.bgz
+exac_lof = ~/bin/ExAC/ExAC.lof_z.bed.bgz
 [Options]
 bwa_threads = 10
