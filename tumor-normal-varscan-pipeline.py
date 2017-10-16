@@ -30,8 +30,12 @@ def annotate_vcf(vcf, genome, config, dir_map):
                     '--custom', config.get(genome, 'exac_mis'),
                     '--custom', config.get(genome, 'exac_lof'),
                     '--plugin LoF'])
-    if not os.path.exists(annotated_vcf):
-        subprocess.call(cmd, shell=True)
+    sys.stderr.write(cmd + '\n')
+    subprocess.call(cmd, shell=True)
+    #if not os.path.exists(annotated_vcf):
+    #    subprocess.call(cmd, shell=True)
+    #else:
+    #    sys.stderr.write(cmd + '\n')
     return annotated_vcf
 
 
@@ -208,6 +212,7 @@ def load_into_gemini(vcf, genome, config, dir_map):
     gemini = config.get('Binaries', 'gemini')
     gemini_python = config.get('Binaries', 'gemini_python')
     cmd = ' '.join([gemini_python, gemini, 'load -t VEP -v', vcf, gemini_db])
+    sys.stderr.write(cmd + '\n')
     subprocess.call(cmd, shell=True)
 
 
@@ -294,11 +299,14 @@ def merge_vcf(vcf_map, genome, config, dir_map):
                      vt, 'decompose -s - |',
                      vt, 'normalize -r', config.get(genome, 'ref_genome'), '-',
                      '>', normed_merged_vcf])
-    if not os.path.exists(normed_merged_vcf):
-        subprocess.call(cmd3, shell=True)
-        subprocess.call(cmd4, shell=True)
-    else:
-        sys.stderr.write(cmd3 + '\n' + cmd4 + '\n')
+    sys.stderr.write(cmd3 + '\n' + cmd4 + '\n')
+    subprocess.call(cmd3, shell=True)
+    subprocess.call(cmd4, shell=True)
+    #if not os.path.exists(normed_merged_vcf):
+    #    subprocess.call(cmd3, shell=True)
+    #    subprocess.call(cmd4, shell=True)
+    #else:
+    #    sys.stderr.write(cmd3 + '\n' + cmd4 + '\n')
     return merged_vcf
 
 
@@ -366,7 +374,7 @@ def setup_dir(cur_dir, out_dir_name):
     gemini_dir = '/'.join([out_dir, "gemini"])
     coverage_dir = '/'.join([out_dir, "coverage"])
     for folder in [out_dir, bam_dir, indbam_dir, pileup_dir,
-                   coverage_dir, vcf_dir, report_dir]:
+                   coverage_dir, vcf_dir]:
         try:
             os.makedirs(folder)
         except OSError as err:
@@ -411,12 +419,12 @@ def main():
     merged_bams_map = merge_bams(indv_bams_maps, config, dir_map)
     realn_bams_map = realign_indels(merged_bams_map, args.genome, config,
                                     dir_map)
-    pileups_map = create_pileups(realn_bams_map, args.genome, config, dir_map)
-    sample_pair_maps = get_sample_pairs(args.contrasts)
-    vcf_map = call_variants(pileups_map, sample_pair_maps, config, dir_map)
-    merged_vcf = merge_vcf(vcf_map, args.genome, config, dir_map)
-    annot_vcf = annotate_vcf(merged_vcf, args.genome, config, dir_map)
-    load_into_gemini(annot_vcf, args.genome, config, dir_map)
+    #pileups_map = create_pileups(realn_bams_map, args.genome, config, dir_map)
+    #sample_pair_maps = get_sample_pairs(args.contrasts)
+    #vcf_map = call_variants(pileups_map, sample_pair_maps, config, dir_map)
+    #merged_vcf = merge_vcf(vcf_map, args.genome, config, dir_map)
+    #annot_vcf = annotate_vcf(merged_vcf, args.genome, config, dir_map)
+    #load_into_gemini(annot_vcf, args.genome, config, dir_map)
 
 
 if __name__ == "__main__":
